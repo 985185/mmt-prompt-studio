@@ -6,11 +6,16 @@ const config: Config = {
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  // Safelist dynamic grid-cols used by CompareMode
+  safelist: ["grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4"],
   theme: {
     extend: {
       colors: {
-        background: "var(--background)",
-        foreground: "var(--foreground)",
+        mmp: {
+          bg: "#faf9f6",
+          accent: "#D85A30",
+          sidebar: "#0e0e0e",
+        },
       },
     },
   },

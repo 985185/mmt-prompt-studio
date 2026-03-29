@@ -1,36 +1,114 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MMP Prompt Studio — Test Repo
+
+A standalone test environment for the **Prompt Studio** feature of [MarkMyPrompt](https://markmyprompt.com).
+Use this repo to develop and validate the Prompt Studio UI before integrating it into the main `mmt-frontend` codebase.
+
+## Tech Stack
+
+- **Next.js 14** (App Router)
+- **TypeScript**
+- **Tailwind CSS**
+- **localStorage** for persistence (no database)
+- No authentication (simulated logged-in user)
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Start the dev server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Folder Structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+├── app/
+│   ├── layout.tsx              # Root layout with Sidebar
+│   ├── page.tsx                # Studio page (main three-panel editor)
+│   ├── globals.css             # Global styles + variable highlight
+│   ├── library/
+│   │   └── page.tsx            # Saved prompts library
+│   └── settings/
+│       └── page.tsx            # API key + model settings
+├── components/
+│   ├── Sidebar.tsx             # Left sidebar navigation
+│   ├── HighlightedEditor.tsx   # Prompt textarea with {{variable}} highlighting
+│   ├── EditorToolbar.tsx       # Clear / Copy / Save buttons
+│   ├── VariableInputs.tsx      # Auto-detected variable input fields
+│   ├── Preview.tsx             # Filled prompt preview + Run button
+│   ├── Output.tsx              # Streamed AI response panel
+│   ├── ApiKeyModal.tsx         # Modal to add OpenAI API key
+│   └── SavePromptModal.tsx     # Modal to save prompt with title + tags
+├── hooks/
+│   └── useVariableDetection.ts # Regex-based {{var}} detection + fill
+├── lib/
+│   ├── storage.ts              # localStorage CRUD (all marked with TODO)
+│   └── openai.ts               # Direct OpenAI streaming call (marked TODO)
+└── types/
+    └── index.ts                # TypeScript interfaces
+```
 
-## Learn More
+## Key Features
 
-To learn more about Next.js, take a look at the following resources:
+- **Prompt editor** with live `{{variable}}` highlighting (orange #D85A30)
+- **Variable detection** — auto-detects variables and shows input fields
+- **Live preview** — fills variables in real-time
+- **OpenAI streaming** — streams responses from gpt-3.5-turbo / gpt-4
+- **Prompt library** — save, browse, and reload prompts
+- **Settings** — API key management + model selection
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Integration Guide
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+When integrating into the main `mmt-frontend` repo:
 
-## Deploy on Vercel
+### 1. Replace localStorage with Real API Calls
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Every file in `src/lib/storage.ts` has `TODO: Replace localStorage with real API call` comments.
+Swap each function with calls to your backend API:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `savePrompt()` → `POST /api/prompts`
+- `getPrompts()` → `GET /api/prompts`
+- `deletePrompt()` → `DELETE /api/prompts/:id`
+- `saveAnswer()` → `POST /api/answers`
+- `getApiKey()` / `setApiKey()` → Server-side encrypted storage
+- `getDefaultModel()` / `setDefaultModel()` → `GET/PUT /api/settings`
+
+### 2. Replace Direct OpenAI Call with Server Proxy
+
+`src/lib/openai.ts` calls the OpenAI API directly from the client (fine for testing).
+In production, create a Next.js API route (e.g. `POST /api/run-prompt`) that proxies the
+request server-side so the API key is never exposed to the browser.
+
+### 3. Add Clerk Authentication
+
+- Wrap the app in `<ClerkProvider>`
+- Replace the simulated user with `useUser()` from `@clerk/nextjs`
+- Add `userId` to saved prompts/answers
+- Protect routes with Clerk middleware
+
+### 4. Swap Sidebar into Existing Dashboard
+
+The `Sidebar.tsx` component is self-contained. Replace it with your existing
+dashboard sidebar or merge the nav items into it.
+
+### 5. Files That Will Change During Integration
+
+- `src/lib/storage.ts` — Replace all localStorage calls with API calls
+- `src/lib/openai.ts` — Move to server-side API route
+- `src/app/layout.tsx` — Wrap in ClerkProvider, use existing layout
+- `src/components/Sidebar.tsx` — Merge into existing dashboard nav
+- `src/app/page.tsx` — Add auth guards, real prompt IDs
+- `src/app/library/page.tsx` — Fetch from API instead of localStorage
+- `src/app/settings/page.tsx` — Store settings server-side
+
+## Design Tokens
+
+- Background: `#faf9f6` (warm off-white)
+- Accent: `#D85A30` (MMP red-orange)
+- Sidebar: `#0e0e0e` (dark)
+- Font: System font stack

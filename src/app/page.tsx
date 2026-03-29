@@ -1,101 +1,265 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useCallback, useEffect } from "react";
+import { ProviderId } from "@/types";
+import HighlightedEditor from "@/components/HighlightedEditor";
+import EditorToolbar from "@/components/EditorToolbar";
+import VariableInputs from "@/components/VariableInputs";
+import Preview from "@/components/Preview";
+import Output from "@/components/Output";
+import SavePromptModal from "@/components/SavePromptModal";
+import ProviderSelector from "@/components/ProviderSelector";
+import HistoryPanel from "@/components/HistoryPanel";
+import CompareMode from "@/components/CompareMode";
+import {
+  useVariableDetection,
+  fillVariables,
+} from "@/hooks/useVariableDetection";
+import {
+  savePrompt,
+  saveAnswer,
+  addHistoryEntry,
+} from "@/lib/storage";
+import { runPrompt } from "@/lib/provider-api";
+import { getProvider } from "@/lib/providers";
+
+type Tab = "studio" | "compare";
+
+export default function StudioPage() {
+  const [tab, setTab] = useState<Tab>("studio");
+  const [promptText, setPromptText] = useState("");
+  const [variableValues, setVariableValues] = useState<Record<string, string>>({});
+  const [response, setResponse] = useState("");
+  const [error, setError] = useState("");
+  const [isRunning, setIsRunning] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState<ProviderId | null>(null);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [historyRefresh, setHistoryRefresh] = useState(0);
+
+  const variables = useVariableDetection(promptText);
+  const filledPrompt = fillVariables(promptText, variableValues);
+
+  // Load a prompt from the library (via sessionStorage handoff)
+  useEffect(() => {
+    const stored = sessionStorage.getItem("mmp_load_prompt");
+    if (stored) {
+      try {
+        const prompt = JSON.parse(stored);
+        setPromptText(prompt.content || "");
+      } catch {
+        // ignore
+      }
+      sessionStorage.removeItem("mmp_load_prompt");
+    }
+  }, []);
+
+  // Auto-select first provider on mount
+  useEffect(() => {
+    if (!selectedProvider) {
+      // Default to ollama (always available)
+      setSelectedProvider("ollama");
+      setSelectedModel("llama3.2");
+    }
+  }, [selectedProvider]);
+
+  const handleVariableChange = useCallback(
+    (varName: string, value: string) => {
+      setVariableValues((prev) => ({ ...prev, [varName]: value }));
+    },
+    []
+  );
+
+  const handleClear = () => {
+    setPromptText("");
+    setVariableValues({});
+  };
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(promptText);
+  };
+
+  const handleSavePrompt = (title: string, tags: string[]) => {
+    // TODO: Replace localStorage with real API call
+    savePrompt({
+      title,
+      content: promptText,
+      tags,
+      variables,
+    });
+  };
+
+  const handleRun = async () => {
+    if (!selectedProvider || !selectedModel) return;
+
+    setIsRunning(true);
+    setResponse("");
+    setError("");
+
+    // TODO: Replace with server-side API route call
+    await runPrompt({
+      provider: selectedProvider,
+      model: selectedModel,
+      prompt: filledPrompt,
+      onChunk: (chunk) => setResponse((prev) => prev + chunk),
+      onDone: () => {
+        setIsRunning(false);
+        // Add to history
+        addHistoryEntry({
+          promptSnippet: promptText.slice(0, 80),
+          provider: selectedProvider,
+          model: selectedModel,
+          responseSnippet: "", // filled after response is complete
+          timestamp: new Date().toISOString(),
+        });
+        setHistoryRefresh((n) => n + 1);
+      },
+      onError: (errMsg) => {
+        setError(errMsg);
+        setIsRunning(false);
+      },
+    });
+  };
+
+  const handleSaveAnswer = () => {
+    // TODO: Replace localStorage with real API call
+    saveAnswer({
+      promptId: "",
+      response,
+      model: selectedModel,
+      provider: selectedProvider || undefined,
+    });
+  };
+
+  const handleClearOutput = () => {
+    setResponse("");
+    setError("");
+  };
+
+  const handleLoadFromHistory = (snippet: string) => {
+    setPromptText(snippet);
+  };
+
+  const providerConfig = selectedProvider ? getProvider(selectedProvider) : null;
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="flex flex-col h-[calc(100vh-1px)] p-4">
+      {/* Tab bar */}
+      <div className="flex items-center gap-1 mb-3">
+        <button
+          onClick={() => setTab("studio")}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            tab === "studio"
+              ? "bg-mmp-accent text-white"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          Studio
+        </button>
+        <button
+          onClick={() => setTab("compare")}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
+            tab === "compare"
+              ? "bg-mmp-accent text-white"
+              : "text-gray-600 hover:bg-gray-100"
+          }`}
+        >
+          Compare
+        </button>
+      </div>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
+      <div className="flex flex-1 gap-4 min-h-0">
+        {/* PANEL 1 — EDITOR (left 50%) — shared between both tabs */}
+        <div className="w-1/2 flex flex-col min-h-0">
+          <EditorToolbar
+            onClear={handleClear}
+            onCopy={handleCopy}
+            onSave={() => setShowSaveModal(true)}
+          />
+          <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-md overflow-hidden">
+            <HighlightedEditor
+              value={promptText}
+              onChange={setPromptText}
+              placeholder="Write your prompt here... Use {{variable_name}} for dynamic values."
             />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <div className="border-t border-gray-200 px-3 py-1.5 text-xs text-gray-400 flex justify-between">
+              <span>{promptText.length} characters</span>
+              <span>
+                {variables.length} variable{variables.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+          </div>
+          <VariableInputs
+            variables={variables}
+            values={variableValues}
+            onChange={handleVariableChange}
+          />
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* RIGHT HALF — changes based on active tab */}
+        <div className="w-1/2 flex flex-col gap-4 min-h-0">
+          {tab === "studio" ? (
+            <>
+              {/* Provider selector */}
+              <ProviderSelector
+                provider={selectedProvider}
+                model={selectedModel}
+                onProviderChange={setSelectedProvider}
+                onModelChange={setSelectedModel}
+              />
+
+              {/* PANEL 2 — TEST/RUN (right top) */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <Preview
+                  filledPrompt={filledPrompt}
+                  hasPrompt={promptText.length > 0}
+                  onRun={handleRun}
+                  isRunning={isRunning}
+                  providerBadge={
+                    providerConfig ? (
+                      <span
+                        className="px-2 py-0.5 text-[10px] font-bold uppercase text-white rounded ml-2"
+                        style={{ backgroundColor: providerConfig.color }}
+                      >
+                        {providerConfig.name}
+                      </span>
+                    ) : null
+                  }
+                />
+              </div>
+
+              {/* PANEL 3 — OUTPUT (right bottom) */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <Output
+                  response={response}
+                  error={error}
+                  isRunning={isRunning}
+                  onClear={handleClearOutput}
+                  onSaveAnswer={handleSaveAnswer}
+                />
+                <HistoryPanel
+                  onLoadPrompt={handleLoadFromHistory}
+                  refreshKey={historyRefresh}
+                />
+              </div>
+            </>
+          ) : (
+            /* Compare tab */
+            <CompareMode
+              filledPrompt={filledPrompt}
+              hasPrompt={promptText.length > 0}
+            />
+          )}
+        </div>
+      </div>
+
+      {/* Modals */}
+      <SavePromptModal
+        isOpen={showSaveModal}
+        defaultTitle={promptText.slice(0, 50)}
+        onClose={() => setShowSaveModal(false)}
+        onSave={handleSavePrompt}
+      />
     </div>
   );
 }
